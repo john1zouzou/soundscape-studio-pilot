@@ -14,6 +14,7 @@ import PlaylistAssignment from "./pages/PlaylistAssignment";
 import FinalPlayer from "./pages/FinalPlayer";
 import PlaylistsPage from "./pages/PlaylistsPage";
 import TrackDetail from "./pages/TrackDetail";
+import PlaylistDetail from "./pages/PlaylistDetail"; // Ajout de la nouvelle page
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -37,6 +38,7 @@ const App = () => (
               <Route path="/batch/:batchId/player" element={<FinalPlayer />} />
               <Route path="/batch/:batchId/track/:trackId" element={<TrackDetail />} />
               <Route path="/playlists" element={<PlaylistsPage />} />
+              <Route path="/playlist/:playlistId" element={<PlaylistDetail />} /> {/* Nouvelle route */}
               <Route path="*" element={<NotFound />} />
             </Routes>
           </main>

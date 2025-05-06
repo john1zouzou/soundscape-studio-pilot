@@ -1,4 +1,3 @@
-
 import { Batch, createBatch, getBatchProgress } from '../mock/fakeBatches';
 import { 
   Track, 
@@ -8,7 +7,7 @@ import {
   regenerateLyrics, 
   regenerateAudio 
 } from '../mock/fakeTracks';
-import { Playlist, initialPlaylists } from '../mock/fakePlaylists';
+import { Playlist, initialPlaylists, createPlaylist } from '../mock/fakePlaylists';
 
 // Simulated delay function to mimic API calls
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -126,6 +125,85 @@ export const regenerateTrackField = async (
   ];
   
   return updatedTrack;
+};
+
+// New function to regenerate all non-validated tracks for a specific field
+export const regenerateAllTrackField = async (
+  batchId: string,
+  field: 'theme' | 'style' | 'lyrics' | 'audio'
+): Promise<Track[]> => {
+  await delay(1500);
+  
+  const batchIndex = batches.findIndex(b => b.id === batchId);
+  if (batchIndex === -1) throw new Error("Batch not found");
+  
+  const batch = batches[batchIndex];
+  const { themePrompt, stylePrompt, lyricsPrompt } = batch;
+  
+  // Get relevant tracks based on field and previous validation state
+  let relevantTracks: Track[];
+  if (field === 'theme') {
+    relevantTracks = batch.tracks;
+  } else if (field === 'style') {
+    relevantTracks = batch.tracks.filter(track => track.status_theme === 'validated');
+  } else if (field === 'lyrics') {
+    relevantTracks = batch.tracks.filter(
+      track => track.status_theme === 'validated' && track.status_style === 'validated'
+    );
+  } else if (field === 'audio') {
+    relevantTracks = batch.tracks.filter(
+      track => track.status_theme === 'validated' && track.status_style === 'validated' && track.status_lyrics === 'validated'
+    );
+  } else {
+    relevantTracks = [];
+  }
+  
+  // Filter for non-validated tracks (pending or rejected)
+  const tracksToRegenerate = relevantTracks.filter(track => 
+    field === 'audio'
+      ? !track.audio_versions.some(av => av.status === 'validated')
+      : track[`status_${field}`] !== 'validated'
+  );
+  
+  // Regenerate each track
+  const updatedTracks = [...batch.tracks];
+  
+  for (const trackToUpdate of tracksToRegenerate) {
+    const trackIndex = updatedTracks.findIndex(t => t.id === trackToUpdate.id);
+    if (trackIndex === -1) continue;
+    
+    let updatedTrack: Track;
+    
+    switch (field) {
+      case 'theme':
+        updatedTrack = regenerateTheme(trackToUpdate, themePrompt);
+        break;
+      case 'style':
+        updatedTrack = regenerateStyle(trackToUpdate, stylePrompt);
+        break;
+      case 'lyrics':
+        updatedTrack = regenerateLyrics(trackToUpdate, lyricsPrompt);
+        break;
+      case 'audio':
+        updatedTrack = regenerateAudio(trackToUpdate);
+        break;
+      default:
+        continue;
+    }
+    
+    updatedTracks[trackIndex] = updatedTrack;
+  }
+  
+  batches = [
+    ...batches.slice(0, batchIndex),
+    {
+      ...batch,
+      tracks: updatedTracks
+    },
+    ...batches.slice(batchIndex + 1)
+  ];
+  
+  return updatedTracks;
 };
 
 export const validateAllTrackField = async (
@@ -272,16 +350,13 @@ export const createNewPlaylist = async (
 ): Promise<Playlist> => {
   await delay(800);
   
-  const newPlaylist = {
-    id: Math.random().toString(36).substr(2, 9),
+  const newPlaylist = createPlaylist(
     name,
     description,
-    createdAt: new Date(),
     themePrompt,
     stylePrompt,
-    lyricsPrompt,
-    trackIds: []
-  };
+    lyricsPrompt
+  );
   
   playlists = [...playlists, newPlaylist];
   return newPlaylist;

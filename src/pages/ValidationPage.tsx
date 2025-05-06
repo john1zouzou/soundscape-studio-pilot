@@ -1,12 +1,19 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getBatchById, validateAllTrackField, updateTrackStatus, regenerateTrackField } from '../services/mockApi';
+import { 
+  getBatchById, 
+  validateAllTrackField, 
+  updateTrackStatus, 
+  regenerateTrackField,
+  regenerateAllTrackField 
+} from '../services/mockApi';
 import { Batch } from '../mock/fakeBatches';
 import { Track } from '../mock/fakeTracks';
 import BatchStepper from '../components/BatchStepper';
 import ValidationButtons from '../components/ValidationButtons';
 import { toast } from 'sonner';
+import { RefreshCw } from 'lucide-react';
 
 const ValidationPage: React.FC = () => {
   const { batchId, field } = useParams<{ batchId: string; field: 'theme' | 'style' | 'lyrics' }>();
@@ -15,6 +22,7 @@ const ValidationPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<{[key: string]: boolean}>({});
   const [validatingAll, setValidatingAll] = useState(false);
+  const [regeneratingAll, setRegeneratingAll] = useState(false);
   
   // Filter for validation type based on the field
   const isValidField = field === 'theme' || field === 'style' || field === 'lyrics';
@@ -138,6 +146,30 @@ const ValidationPage: React.FC = () => {
     }
   };
   
+  // Handle regeneration of all non-validated tracks
+  const handleRegenerateAll = async () => {
+    if (!batchId || !field || !isValidField || !batch) return;
+    
+    setRegeneratingAll(true);
+    
+    try {
+      await regenerateAllTrackField(batchId, field);
+      
+      // Refetch the batch to get updated data
+      const updatedBatch = await getBatchById(batchId);
+      if (updatedBatch) {
+        setBatch(updatedBatch);
+      }
+      
+      toast.success(`All non-validated ${field}s regenerated successfully`);
+    } catch (error) {
+      console.error(`Error regenerating all ${field}s:`, error);
+      toast.error(`Failed to regenerate all ${field}s`);
+    } finally {
+      setRegeneratingAll(false);
+    }
+  };
+  
   // Handle validation of all pending tracks
   const handleValidateAll = async () => {
     if (!batchId || !field || !isValidField || !batch) return;
@@ -208,6 +240,13 @@ const ValidationPage: React.FC = () => {
     if (!batch) return false;
     
     return batch.tracks.some(track => track[`status_${field}`] === 'rejected');
+  };
+  
+  // Check if there are any non-validated tracks (rejected or pending)
+  const hasNonValidatedTracks = (): boolean => {
+    if (!batch) return false;
+    
+    return batch.tracks.some(track => track[`status_${field}`] !== 'validated');
   };
   
   if (loading) {
@@ -281,31 +320,54 @@ const ValidationPage: React.FC = () => {
           </div>
         </div>
         
-        {pendingCount > 0 && !hasRejectedTracks() && (
-          <button
-            onClick={handleValidateAll}
-            disabled={validatingAll}
-            className={`px-4 py-2 bg-music-green text-white rounded-md hover:bg-music-green/90 flex items-center
-              ${validatingAll ? 'opacity-70 cursor-not-allowed' : ''}`}
-          >
-            {validatingAll ? (
-              <>
-                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Validating All...
-              </>
-            ) : (
-              <>
-                <svg className="mr-2" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M20 6 9 17l-5-5" />
-                </svg>
-                Validate All Pending
-              </>
-            )}
-          </button>
-        )}
+        <div className="flex space-x-3">
+          {hasNonValidatedTracks() && (
+            <button
+              onClick={handleRegenerateAll}
+              disabled={regeneratingAll}
+              className={`px-4 py-2 bg-music-purple text-white rounded-md hover:bg-music-purple/90 flex items-center
+                ${regeneratingAll ? 'opacity-70 cursor-not-allowed' : ''}`}
+            >
+              {regeneratingAll ? (
+                <>
+                  <RefreshCw className="animate-spin -ml-1 mr-2 h-4 w-4" />
+                  Regenerating All...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Regenerate All Non-Validated
+                </>
+              )}
+            </button>
+          )}
+          
+          {pendingCount > 0 && !hasRejectedTracks() && (
+            <button
+              onClick={handleValidateAll}
+              disabled={validatingAll}
+              className={`px-4 py-2 bg-music-green text-white rounded-md hover:bg-music-green/90 flex items-center
+                ${validatingAll ? 'opacity-70 cursor-not-allowed' : ''}`}
+            >
+              {validatingAll ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Validating All...
+                </>
+              ) : (
+                <>
+                  <svg className="mr-2" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 6 9 17l-5-5" />
+                  </svg>
+                  Validate All Pending
+                </>
+              )}
+            </button>
+          )}
+        </div>
         
         {areAllValidated() && (
           <div className="flex items-center text-music-green">

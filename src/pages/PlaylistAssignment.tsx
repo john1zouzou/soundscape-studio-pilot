@@ -12,6 +12,7 @@ import { Playlist } from '../mock/fakePlaylists';
 import { Track } from '../mock/fakeTracks';
 import { isTrackFullyValidated } from '../utils/statusHelpers';
 import { toast } from 'sonner';
+import { Checkbox } from '../components/ui/checkbox';
 
 const PlaylistAssignment: React.FC = () => {
   const { batchId } = useParams<{ batchId: string }>();
@@ -24,7 +25,7 @@ const PlaylistAssignment: React.FC = () => {
   
   // Form state
   const [selectedTracks, setSelectedTracks] = useState<string[]>([]);
-  const [selectedPlaylist, setSelectedPlaylist] = useState<string | 'new'>('');
+  const [selectedPlaylists, setSelectedPlaylists] = useState<string[]>([]);
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [newPlaylistDescription, setNewPlaylistDescription] = useState('');
   const [showNewPlaylistForm, setShowNewPlaylistForm] = useState(false);
@@ -88,11 +89,22 @@ const PlaylistAssignment: React.FC = () => {
     }
   };
   
-  // Handle playlist selection
-  const handlePlaylistChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const value = e.target.value;
-    setSelectedPlaylist(value);
-    setShowNewPlaylistForm(value === 'new');
+  // Toggle playlist selection
+  const togglePlaylistSelection = (playlistId: string) => {
+    if (selectedPlaylists.includes(playlistId)) {
+      setSelectedPlaylists(selectedPlaylists.filter(id => id !== playlistId));
+    } else {
+      setSelectedPlaylists([...selectedPlaylists, playlistId]);
+    }
+  };
+  
+  // Handle new playlist checkbox
+  const toggleNewPlaylist = (checked: boolean) => {
+    setShowNewPlaylistForm(checked);
+    if (!checked) {
+      setNewPlaylistName('');
+      setNewPlaylistDescription('');
+    }
   };
   
   // Create new playlist
@@ -114,7 +126,7 @@ const PlaylistAssignment: React.FC = () => {
       );
       
       setPlaylists([...playlists, newPlaylist]);
-      setSelectedPlaylist(newPlaylist.id);
+      setSelectedPlaylists([...selectedPlaylists, newPlaylist.id]);
       setShowNewPlaylistForm(false);
       setNewPlaylistName('');
       setNewPlaylistDescription('');
@@ -128,36 +140,42 @@ const PlaylistAssignment: React.FC = () => {
     }
   };
   
-  // Assign tracks to playlist
+  // Assign tracks to playlists
   const handleAssignTracks = async () => {
     if (selectedTracks.length === 0) {
       toast.error("Please select at least one track");
       return;
     }
     
-    if (!selectedPlaylist || selectedPlaylist === 'new') {
-      toast.error("Please select a playlist");
+    if (selectedPlaylists.length === 0) {
+      toast.error("Please select at least one playlist");
       return;
     }
     
     setAssigning(true);
     
     try {
-      const updatedPlaylist = await addTracksToPlaylist(
-        selectedPlaylist,
-        selectedTracks
+      // For each selected playlist, add the tracks
+      const promises = selectedPlaylists.map(playlistId => 
+        addTracksToPlaylist(playlistId, selectedTracks)
       );
       
-      // Update the playlist in state
-      setPlaylists(playlists.map(p => 
-        p.id === selectedPlaylist ? updatedPlaylist : p
-      ));
+      const results = await Promise.all(promises);
       
-      const playlistName = playlists.find(p => p.id === selectedPlaylist)?.name;
-      toast.success(`${selectedTracks.length} track${selectedTracks.length !== 1 ? 's' : ''} added to "${playlistName}"`);
+      // Update the playlists in state
+      const updatedPlaylists = playlists.map(p => {
+        const updatedPlaylist = results.find(up => up.id === p.id);
+        return updatedPlaylist || p;
+      });
+      
+      setPlaylists(updatedPlaylists);
+      
+      toast.success(
+        `${selectedTracks.length} track${selectedTracks.length !== 1 ? 's' : ''} added to ${selectedPlaylists.length} playlist${selectedPlaylists.length !== 1 ? 's' : ''}`
+      );
     } catch (error) {
       console.error("Error assigning tracks:", error);
-      toast.error("Failed to assign tracks to playlist");
+      toast.error("Failed to assign tracks to playlists");
     } finally {
       setAssigning(false);
     }
@@ -251,11 +269,11 @@ const PlaylistAssignment: React.FC = () => {
                       onClick={() => toggleTrackSelection(track.id)}
                     >
                       <div className="flex items-center">
-                        <input
-                          type="checkbox"
+                        <Checkbox
+                          id={`track-${track.id}`}
                           checked={isSelected}
-                          onChange={() => toggleTrackSelection(track.id)}
-                          className="mr-3 h-4 w-4 rounded border-gray-300 text-music-purple focus:ring-music-purple"
+                          onCheckedChange={() => toggleTrackSelection(track.id)}
+                          className="mr-3 h-4 w-4 rounded text-music-purple focus:ring-music-purple"
                         />
                         <div>
                           <h3 className="font-medium">Track {trackIndex + 1}</h3>
@@ -277,27 +295,57 @@ const PlaylistAssignment: React.FC = () => {
         <div className="lg:col-span-1">
           <div className="bg-card rounded-lg border border-border p-6 sticky top-6">
             <h2 className="text-xl font-semibold mb-4">
-              Assign to Playlist
+              Assign to Playlists
             </h2>
             
-            <div className="mb-4">
-              <label className="block text-sm font-medium mb-1 text-gray-200">
-                Playlist
-              </label>
-              <select
-                value={selectedPlaylist}
-                onChange={handlePlaylistChange}
-                className="w-full bg-secondary px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-music-purple"
-                disabled={selectedTracks.length === 0}
-              >
-                <option value="">Select a playlist</option>
-                <option value="new">➕ Create New Playlist</option>
+            <div className="mb-6">
+              <h3 className="text-sm font-medium mb-3 text-gray-200">
+                Select Playlists
+              </h3>
+              
+              <div className="space-y-3 max-h-48 overflow-y-auto pr-2 mb-4">
                 {playlists.map(playlist => (
-                  <option key={playlist.id} value={playlist.id}>
-                    {playlist.name} ({playlist.trackIds.length})
-                  </option>
+                  <div 
+                    key={playlist.id}
+                    className={`flex items-center p-3 rounded-md cursor-pointer ${
+                      selectedPlaylists.includes(playlist.id) ? 'bg-music-purple/10 border border-music-purple' : 'bg-secondary hover:bg-secondary/70 border border-transparent'
+                    }`}
+                    onClick={() => togglePlaylistSelection(playlist.id)}
+                  >
+                    <Checkbox
+                      id={`playlist-${playlist.id}`}
+                      checked={selectedPlaylists.includes(playlist.id)}
+                      onCheckedChange={() => togglePlaylistSelection(playlist.id)}
+                      className="mr-3 h-4 w-4 rounded text-music-purple focus:ring-music-purple"
+                    />
+                    <div>
+                      <label htmlFor={`playlist-${playlist.id}`} className="font-medium cursor-pointer">
+                        {playlist.name}
+                      </label>
+                      <p className="text-xs text-gray-400">
+                        {playlist.trackIds.length} tracks
+                      </p>
+                    </div>
+                  </div>
                 ))}
-              </select>
+              </div>
+              
+              <div 
+                className={`flex items-center p-3 rounded-md cursor-pointer mb-2 ${
+                  showNewPlaylistForm ? 'bg-music-purple/10 border border-music-purple' : 'bg-secondary hover:bg-secondary/70 border border-transparent'
+                }`}
+                onClick={() => toggleNewPlaylist(!showNewPlaylistForm)}
+              >
+                <Checkbox
+                  id="new-playlist"
+                  checked={showNewPlaylistForm}
+                  onCheckedChange={(checked) => toggleNewPlaylist(!!checked)}
+                  className="mr-3 h-4 w-4 rounded text-music-purple focus:ring-music-purple"
+                />
+                <label htmlFor="new-playlist" className="font-medium cursor-pointer">
+                  ➕ Create New Playlist
+                </label>
+              </div>
             </div>
             
             {showNewPlaylistForm && (
@@ -355,18 +403,16 @@ const PlaylistAssignment: React.FC = () => {
                 {selectedTracks.length} track{selectedTracks.length !== 1 ? 's' : ''} selected
               </p>
               
-              {selectedPlaylist && selectedPlaylist !== 'new' && (
-                <p className="text-sm text-gray-400">
-                  Target playlist: {playlists.find(p => p.id === selectedPlaylist)?.name}
-                </p>
-              )}
+              <p className="text-sm text-gray-400">
+                {selectedPlaylists.length} playlist{selectedPlaylists.length !== 1 ? 's' : ''} selected
+              </p>
             </div>
             
             <button
               onClick={handleAssignTracks}
-              disabled={selectedTracks.length === 0 || !selectedPlaylist || selectedPlaylist === 'new' || assigning}
+              disabled={selectedTracks.length === 0 || selectedPlaylists.length === 0 || assigning}
               className={`w-full px-4 py-2 bg-music-green text-white rounded-md hover:bg-music-green/90
-                ${(selectedTracks.length === 0 || !selectedPlaylist || selectedPlaylist === 'new' || assigning) ? 'opacity-70 cursor-not-allowed' : ''}`}
+                ${(selectedTracks.length === 0 || selectedPlaylists.length === 0 || assigning) ? 'opacity-70 cursor-not-allowed' : ''}`}
             >
               {assigning ? 'Assigning...' : 'Assign Tracks'}
             </button>
